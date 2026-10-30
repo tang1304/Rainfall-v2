@@ -15,6 +15,8 @@ level04@rainfall:~$ checksec riviera
 
 Same as level03 protections, no executable stack
 
+## Solving
+
 For this one, we've tried several approaches.
 the first one was to overwrite the **GOT address** of the `printf` function to replace it with the address of `system`
 so that on the next call of `printf(<our_buffer>)` it replaces it with `system(<our_buffer>)`.

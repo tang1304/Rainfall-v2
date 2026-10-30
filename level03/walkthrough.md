@@ -16,6 +16,8 @@ level03@rainfall:~$ checksec armitage
 In `queue_job`, there is a gets() into a 128 bytes buffer, with no protection. We can overflow if 
 
 
+## Solving
+
 ```shell
 level03@rainfall:~$ ldd ./armitage
 	linux-vdso.so.1 (0x00007ffff7fc3000)

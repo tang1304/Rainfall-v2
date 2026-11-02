@@ -24,3 +24,7 @@ https://www.ired.team/offensive-security/code-injection-process-injection/binary
 https://www.arsouyes.org/articles/2019/54_Shellcode/
 
 https://medium.com/@ria.banerjee005/pwntools-the-binary-exploitation-toolkit-c41828eef506
+
+https://codearcana.com/posts/2013/05/02/introduction-to-format-string-exploits.html
+
+https://corruptedprotocol.medium.com/killer-queen-ctf-tweety-birb-canary-bypass-with-format-string-vulnerability-2f1f3b516fe2

